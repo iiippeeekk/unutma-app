@@ -47,19 +47,24 @@ app.post("/api/suggest", async (req, res) => {
             {
               role: "system",
               content:
-                "Sen Türkçe liste hazırlama asistanısın. " +
-                "Tam olarak 4 somut eşya veya görev öner. " +
-                "Her maddeyi ayrı satıra yaz. " +
-                "Başlık, giriş, açıklama veya sonuç cümlesi yazma. " +
-                "Numaralandırma kullanma. " +
-                "Yalnızca dört madde döndür."
+                "Sen Türkçe eşya listesi hazırlama asistanısın. " +
+                "Verilen liste adına uygun tam 4 farklı ve gerekli fiziksel eşya öner. " +
+                "Yalnızca kişinin yanına alması veya götürmesi gereken eşyaları yaz. " +
+                "Spor dalları, aktiviteler, görevler veya yapılacak işler önerme. " +
+                "Örneğin spor listesi için spor çantası, su matarası, havlu ve spor kıyafeti öner. " +
+                "Kamp listesi için çadır, uyku tulumu, el feneri ve mat öner. " +
+                "Başlık veya açıklama yazma. " +
+                "Her eşyayı ayrı satırda yaz. " +
+                "Yalnızca 4 eşya döndür."
             },
             {
               role: "user",
               content:
                 `Liste adı: "${listName}".\n` +
-                "Bu liste için gerekli 4 farklı madde öner. " +
-                "Yalnızca madde isimlerini, her biri ayrı satırda yaz."
+                "Bu liste için yanına alınması gereken 4 farklı fiziksel eşya öner. " +
+                "Spor dalı veya aktivite adı yazma. " +
+                "Görev, tavsiye veya yapılacak iş yazma. " +
+                "Yalnızca eşya isimlerini, her biri ayrı satırda yaz."
             }
           ]
         })
