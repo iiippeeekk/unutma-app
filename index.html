@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unutma!</title>
+  <style>
+    /* Sayfanin genel gorunumu */
+    body {
+      background: #fffafd; color: #352d39;
+      font-family: Arial, sans-serif;
+      max-width: 700px; margin: 0 auto; padding: 24px 16px;
+    }
+    h1 { color: #d86b9b; text-align: center; margin-bottom: 8px; }
+    .subtitle { text-align: center; color: #817583; margin-bottom: 28px; }
+    h2 { font-size: 19px; margin-bottom: 12px; }
+
+    /* Yuvarlak butonlar */
+    button {
+      background: #e88bb1; color: white; border: none;
+      padding: 10px 15px; font-size: 14px; cursor: pointer;
+      margin: 4px; border-radius: 10px; transition: background .2s;
+    }
+    button:hover { background: #d86b9b; }
+    button:disabled { background: #cca3b4; cursor: wait; }
+
+    /* Silme butonlari icin ozel renk */
+    .delete-btn {
+      background: #e8a2a2; padding: 6px 10px; font-size: 12px;
+    }
+    .delete-btn:hover { background: #d96868; }
+
+    .list-header-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px;
+    }
+
+    #listButtons { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+    #listButtons button.active { background: #a94e7b; font-weight: bold; }
+
+    /* Yuvarlak yazi kutulari ve kartlar */
+    input {
+      box-sizing: border-box; width: 100%; padding: 11px;
+      border: 1px solid #e5cbd8; background: white; color: #352d39;
+      font-size: 14px; margin-bottom: 8px; border-radius: 10px;
+    }
+    form { margin-bottom: 24px; }
+    .card {
+      background: white; border: 1px solid #f0dce6;
+      padding: 16px; margin-bottom: 18px; border-radius: 16px;
+    }
+
+    /* Liste maddeleri */
+    #items { padding: 0; margin: 0; list-style: none; }
+    #items li {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 4px; border-bottom: 1px solid #f2e5eb;
+      overflow-wrap: anywhere;
+    }
+    #items input[type="checkbox"] {
+      width: 18px; height: 18px; margin: 0; flex-shrink: 0;
+      accent-color: #d86b9b; cursor: pointer;
+    }
+    #items li span { flex: 1; }
+    #items li span.done { text-decoration: line-through; color: #a49aa3; }
+
+    /* Ilerleme cubugu */
+    .progress-background {
+      width: 100%; height: 12px; background: #f3e5ec;
+      margin-top: 10px; overflow: hidden; border-radius: 20px;
+    }
+    #progressBar {
+      width: 0%; height: 100%; background: #e88bb1;
+      transition: width .3s; border-radius: 20px;
+    }
+    #progressText { font-size: 14px; color: #817583; }
+    #statusMessage { color: #a94e7b; font-weight: bold; margin-top: 12px; }
+    .empty-message { color: #817583; font-size: 14px; line-height: 1.5; }
+    .info-card {
+      background: #fff1f7; padding: 14px; margin-top: 14px;
+      line-height: 1.5; border-radius: 14px;
+    }
+
+    /* Kucuk ekranlara uyum */
+    @media (max-width: 480px) {
+      body { padding: 18px 12px; }
+      h1 { font-size: 28px; }
+      .card { padding: 12px; }
+      button { padding: 10px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Uygulamanin basligi -->
+  <h1>Unutma!</h1>
+  <p class="subtitle">Yanına almayı unutma! (Yapay Zeka Destekli)</p>
+
+  <!-- Liste olusturma alani -->
+  <section class="card">
+    <h2>Listelerim</h2>
+    <div id="listButtons"></div>
+    <form id="listForm">
+      <input type="text" id="listName" placeholder="Yeni listenin adını yaz (Örn: Kamp, Spor)..." maxlength="32" required>
+      <button type="submit" id="createListBtn">Yapay Zekaya Sor & Liste Oluştur</button>
+    </form>
+  </section>
+
+  <!-- Secili listenin maddeleri ve ilerleme durumu -->
+  <section class="card">
+    <div class="list-header-row">
+      <h2 id="currentTitle" style="margin: 0;">Bir liste seç</h2>
+      <button type="button" id="deleteListBtn" class="delete-btn" hidden>Listeyi Sil</button>
+    </div>
+
+    <form id="itemForm" hidden>
+      <input type="text" id="itemName" placeholder="Yanına alacağın eşyayı yaz..." maxlength="100" required>
+      <button type="submit">Madde Ekle</button>
+    </form>
+    <ul id="items"></ul>
+    <p id="emptyMessage" class="empty-message">Başlamak için yeni bir liste oluştur.</p>
+    <p id="progressText">Hazırlık Durumu: %0</p>
+    <div class="progress-background"><div id="progressBar"></div></div>
+    <p id="statusMessage"></p>
+  </section>
+
+  <!-- Uygulamanin kisa aciklamalari -->
+  <div class="info-card">
+    <strong>Yapay Zeka Asistanı</strong>
+    <p>Oluşturduğun liste adı yapay zekaya sorulur ve gelen yanıttan en fazla 4 temel eşya otomatik olarak listeye eklenir.</p>
+  </div>
+
+  <script>
+    // Listeleri ve secili listenin sirasini tutuyoruz
+    const lists = [];
+    let activeIndex = -1;
+
+    // HTML elemanlarini seciyoruz
+    const listButtons = document.getElementById("listButtons");
+    const listForm = document.getElementById("listForm");
+    const listName = document.getElementById("listName");
+    const createListBtn = document.getElementById("createListBtn");
+    const currentTitle = document.getElementById("currentTitle");
+    const deleteListBtn = document.getElementById("deleteListBtn");
+    const itemForm = document.getElementById("itemForm");
+    const itemName = document.getElementById("itemName");
+    const items = document.getElementById("items");
+    const emptyMessage = document.getElementById("emptyMessage");
+    const progressText = document.getElementById("progressText");
+    const progressBar = document.getElementById("progressBar");
+    const statusMessage = document.getElementById("statusMessage");
+
+    // Yapay zekaya sorup en fazla 4 öneri alan asenkron fonksiyon
+    async function aiSuggestItems(listName, targetList) {
+      // Yükleniyor durumunu kullanıcıya göster
+      createListBtn.disabled = true;
+      createListBtn.textContent = "Yapay Zeka Düşünüyor...";
+
+      try {
+        // API anahtarı HTML dosyasında tutulmaz; istek kendi sunucumuza gider.
+        const response = await fetch("/api/suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listName: listName })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Yapay zeka yanıt vermedi.");
+        }
+
+        const suggestions = Array.isArray(data.items) ? data.items : [];
+        const cleanSuggestions = suggestions
+          .map(item => String(item).replace(/^[0-9#\-*\.\s]+/, "").trim())
+          .filter(Boolean)
+          .slice(0, 4);
+
+        if (cleanSuggestions.length === 0) {
+          throw new Error("Geçerli madde bulunamadı.");
+        }
+
+        cleanSuggestions.forEach(function(itemText) {
+          targetList.items.push({ name: itemText, done: false });
+        });
+      } catch (error) {
+        console.warn("Yapay zeka bağlantısı kullanılamadı; hazır öneriler gösteriliyor:", error);
+
+        // Sunucu/API çalışmazsa uygulama yine kullanılabilsin diye yedek öneriler
+        const lowerName = listName.toLocaleLowerCase("tr");
+        let fallbackSuggestions = ["Cüzdan / Kartlar", "Telefon", "Anahtar", "Su Matarası"];
+
+        if (lowerName.includes("kamp") || lowerName.includes("çadır")) {
+          fallbackSuggestions = ["Çadır", "Uyku Tulumu", "Powerbank", "El Feneri"];
+        } else if (lowerName.includes("spor") || lowerName.includes("fitness") || lowerName.includes("yoga")) {
+          fallbackSuggestions = ["Spor Matı", "Havlu", "Su Matarası", "Kıyafet"];
+        } else if (lowerName.includes("okul") || lowerName.includes("ders") || lowerName.includes("sınav") || lowerName.includes("lise") || lowerName.includes("üniversite")) {
+          fallbackSuggestions = ["Kalem ve Silgi", "Defter", "Öğrenci Kimliği", "Su"];
+        } else if (lowerName.includes("ofis") || lowerName.includes("iş")) {
+          fallbackSuggestions = ["Laptop ve Şarj Aleti", "Ajanda", "Ofis Giriş Kartı", "Kulaklık"];
+        } else if (lowerName.includes("piknik")) {
+          fallbackSuggestions = ["Piknik Örtüsü", "Termos", "Atıştırmalık", "Çatal-Bıçak Seti"];
+        } else if (lowerName.includes("yaz")) {
+          fallbackSuggestions = ["Güneş Kremi", "Mayo/Bikini", "Gözlük", "Yelpaze/Fan"];
+        } else if (lowerName.includes("kış")) {
+          fallbackSuggestions = ["Mont/Kaban", "Atkı", "Eldiven", "Bere"];
+        } else if (lowerName.includes("tatil") || lowerName.includes("seyahat")) {
+          fallbackSuggestions = ["Pasaport / Kimlik", "Şarj Aleti", "Kitap", "Diş Fırçası"];
+        }
+
+        fallbackSuggestions.slice(0, 4).forEach(function(itemText) {
+          targetList.items.push({ name: itemText, done: false });
+        });
+      } finally {
+        // İşlem tamamlandığında butonu eski haline getir ve ekranı yenile
+        createListBtn.disabled = false;
+        createListBtn.textContent = "Yapay Zekaya Sor & Liste Oluştur";
+        render();
+      }
+    }
+
+    // Listeleri, maddeleri ve ilerleme durumunu yeniliyoruz
+    function render() {
+      listButtons.innerHTML = "";
+      items.innerHTML = "";
+
+      if (lists.length === 0) {
+        activeIndex = -1;
+        currentTitle.textContent = "Bir liste seç";
+        deleteListBtn.hidden = true;
+        itemForm.hidden = true;
+        emptyMessage.hidden = false;
+        emptyMessage.textContent = "Başlamak için yeni bir liste oluştur.";
+        progressText.textContent = "Hazırlık Durumu: %0";
+        progressBar.style.width = "0%";
+        statusMessage.textContent = "";
+        return;
+      }
+
+      // Her liste icin secim butonu olusturuyoruz
+      lists.forEach(function(list, index) {
+        const button = document.createElement("button");
+        button.textContent = list.name;
+        if (index === activeIndex) button.classList.add("active");
+        button.addEventListener("click", function() {
+          activeIndex = index;
+          render();
+        });
+        listButtons.appendChild(button);
+      });
+
+      if (activeIndex < 0 || activeIndex >= lists.length) activeIndex = 0;
+      const activeList = lists[activeIndex];
+      currentTitle.textContent = activeList.name;
+      deleteListBtn.hidden = false;
+      itemForm.hidden = false;
+      emptyMessage.hidden = activeList.items.length > 0;
+
+      if (activeList.items.length === 0) {
+        emptyMessage.textContent = "Bu liste henüz boş. Yeni bir madde ekleyebilirsin.";
+      }
+
+      // Tamamlanan madde sayisini ve yuzdeyi hesapliyoruz
+      const completed = activeList.items.filter(item => item.done).length;
+      const total = activeList.items.length;
+      const percentage = total ? Math.round(completed / total * 100) : 0;
+      progressText.textContent = "Hazırlık Durumu: %" + percentage +
+        " (" + completed + "/" + total + ")";
+      progressBar.style.width = percentage + "%";
+      statusMessage.textContent = total > 0 && completed === total
+        ? "Harika! Her şey hazır!" : "";
+
+      // Her maddeye isaretleme kutusu ve silme butonu ekliyoruz
+      activeList.items.forEach(function(item, itemIndex) {
+        const li = document.createElement("li");
+        
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = item.done;
+        checkbox.addEventListener("change", function() {
+          item.done = checkbox.checked;
+          render();
+        });
+
+        const span = document.createElement("span");
+        span.textContent = item.name;
+        if (item.done) span.classList.add("done");
+
+        const deleteItemBtn = document.createElement("button");
+        deleteItemBtn.textContent = "Sil";
+        deleteItemBtn.className = "delete-btn";
+        deleteItemBtn.addEventListener("click", function() {
+          activeList.items.splice(itemIndex, 1);
+          render();
+        });
+
+        li.append(checkbox, span, deleteItemBtn);
+        items.appendChild(li);
+      });
+    }
+
+    // Aktif listeyi tamamen silme olayı
+    deleteListBtn.addEventListener("click", function() {
+      if (activeIndex < 0 || activeIndex >= lists.length) return;
+      
+      const listNameTied = lists[activeIndex].name;
+      if (confirm(`"${listNameTied}" listesini silmek istediğine emin misin?`)) {
+        lists.splice(activeIndex, 1);
+        activeIndex = lists.length - 1;
+        render();
+      }
+    });
+
+    // Yeni liste olusturuyoruz ve yapay zeka çağrısını tetikliyoruz
+    listForm.addEventListener("submit", async function(event) {
+      event.preventDefault();
+      const name = listName.value.trim();
+      if (!name) return;
+
+      const alreadyExists = lists.some(list =>
+        list.name.toLocaleLowerCase("tr") === name.toLocaleLowerCase("tr")
+      );
+      if (alreadyExists) {
+        alert("Bu isimde bir liste zaten var.");
+        return;
+      }
+
+      const newList = { name: name, items: [] };
+      lists.push(newList);
+      activeIndex = lists.length - 1;
+      listName.value = "";
+
+      // Asenkron yapay zeka sorgusunu çalıştır
+      await aiSuggestItems(name, newList);
+    });
+
+    // Secili listeye yeni madde ekliyoruz
+    itemForm.addEventListener("submit", function(event) {
+      event.preventDefault();
+      if (activeIndex < 0 || activeIndex >= lists.length) return;
+
+      const name = itemName.value.trim();
+      if (!name) return;
+
+      lists[activeIndex].items.push({ name: name, done: false });
+      itemName.value = "";
+      render();
+    });
+
+    // Sayfa acilinca ilk gorunumu hazirliyoruz
+    render();
+  </script>
+</body>
+</html>
