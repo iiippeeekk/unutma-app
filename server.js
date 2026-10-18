@@ -1,6 +1,6 @@
 
- // Unutma! uygulamasının güvenli sunucu tarafı
-// API anahtarını KEDY_API_KEY ortam değişkeninden okur; HTML'e koymayın.
+ // Unutma! güvenli sunucu tarafı
+// API anahtarı Render ortam değişkenlerinde KEDY_API_KEY olarak tutulur.
 
 require("dotenv").config();
 const express = require("express");
@@ -47,26 +47,27 @@ app.post("/api/suggest", async (req, res) => {
             {
               role: "system",
               content:
-                "Sen Türkçe eşya listesi hazırlama asistanısın. " +
-                "Verilen liste adına uygun tam 4 farklı ve gerekli fiziksel eşya öner. " +
-                "Yalnızca kişinin yanına alması veya götürmesi gereken eşyaları yaz. " +
-                "Spor dalları, aktiviteler, görevler veya yapılacak işler önerme. " +
-                "Örneğin spor listesi için spor çantası, su matarası, havlu ve spor kıyafeti öner. " +
-                "Kamp listesi için çadır, uyku tulumu, el feneri ve mat öner. " +
-                "Başlık veya açıklama yazma. " +
-                "Her eşyayı ayrı satırda yaz. " +
-                "Yalnızca 4 eşya döndür."
+                "Sen Unutma! uygulamasının eşya listesi asistanısın. " +
+                "Kullanıcının verdiği liste adına göre yanında götürmesi gereken TAM 4 farklı, somut ve gerçek eşya öner. " +
+                "En önemli kural: Aktiviteyi veya kategoriyi değil, o aktivite için gereken EŞYALARI yaz. " +
+                "Örneğin 'spor' için spor ayakkabısı, spor kıyafeti, su matarası ve havlu yaz. " +
+                "'kamp' için çadır, uyku tulumu, el feneri ve mat yaz. " +
+                "'plaj' için plaj havlusu, güneş kremi, mayo ve güneş gözlüğü yaz. " +
+                "Futbol, tenis, basketbol, yüzme, kamp, spor gibi etkinlik veya kategori adlarını madde olarak ASLA yazma. " +
+                "Liste adını veya aynı kelimeyi öneri diye tekrar etme. " +
+                "Başlık, giriş cümlesi, açıklama, numaralandırma veya sonuç yazma. " +
+                "Yalnızca 4 eşya adı yaz; her eşya ayrı satırda olsun."
             },
             {
               role: "user",
               content:
                 `Liste adı: "${listName}".\n` +
-                "Bu liste için yanına alınması gereken 4 farklı fiziksel eşya öner. " +
-                "Spor dalı veya aktivite adı yazma. " +
-                "Görev, tavsiye veya yapılacak iş yazma. " +
-                "Yalnızca eşya isimlerini, her biri ayrı satırda yaz."
+                "Bu yere veya etkinliğe giderken çantama koymam gereken 4 farklı fiziksel eşyayı yaz. " +
+                "Etkinlik isimleri, spor dalları, kategori adları veya yapılacak işler istemiyorum. " +
+                "Yalnızca yanımda götüreceğim eşyaları, her biri ayrı satırda yaz."
             }
-          ]
+          ],
+          temperature: 0.3
         })
       }
     );
@@ -76,77 +77,88 @@ app.post("/api/suggest", async (req, res) => {
     if (!response.ok) {
       console.error("Kedy API HTTP hatası:", response.status);
       return res.status(502).json({
-        error: "Yapay zeka servisi şu anda yanıt veremedi."
+        error: "Yapay zeka servisi yanıt veremedi."
       });
     }
 
     const content = data?.choices?.[0]?.message?.content;
 
     if (typeof content !== "string" || !content.trim()) {
-      console.error("Kedy API geçerli metin döndürmedi.");
       return res.status(502).json({
         error: "Yapay zeka yanıtı okunamadı."
       });
     }
 
-    // Kod bloğu işaretlerini kaldır.
+    // Kod bloğu işaretlerini ve gereksiz boşlukları temizle.
     const cleanedContent = content
       .replace(/```[a-z]*\s*/gi, "")
       .replace(/```/g, "")
       .trim();
 
-    // Satırları ayır ve başlıkları temizle.
+    // Yanıtı satırlara ayır.
     let items = cleanedContent
       .split(/\r?\n/)
       .map(line => {
         let item = line.trim();
 
-        // Madde işaretlerini ve numaralandırmayı kaldır.
-        item = item.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "");
+        // Madde numaralarını ve işaretlerini kaldır.
+        item = item.replace(/^\s*(?:(?:[-*•])\s*|\d+[.)]\s*)/, "");
+        item = item.replace(/^["'“”]+|["'“”]+$/g, "").trim();
 
-        // Açıklama veya başlık cümlelerini tamamen atla.
+        // Başlık veya açıklama cümlelerini tamamen atla.
         if (
-          /^(sadece\s+)?(kamp\s+yapmaya\s+uygun|liste|öneriler|önerilen\s+maddeler|bu\s+listeye|işte\s)/i.test(item) ||
-          /^(sadece\s+)?\d+\s+(farklı\s+ve\s+)?(gerekli\s+)?(madde|öneri|eşya|malzeme)/i.test(item) ||
-          /^(işte|tabii|elbette|örneğin|aşağıda)\b/i.test(item) ||
-          /:\s*$/.test(item)
+          !item ||
+          /^(sadece\s+)?(işte|tabii|elbette|aşağıda|öneriler|önerilen maddeler)\b/i.test(item) ||
+          /^sadece\b.*\b(madde|öneri|eşya|malzeme)\b.*:?\s*$/i.test(item) ||
+          /^.{0,100}\b(listesi|listem|önerileri|öneriler)\s*:\s*$/i.test(item) ||
+          /^liste adı\s*:/i.test(item) ||
+          /^```/.test(item)
         ) {
           return "";
         }
 
-        // İki nokta öncesi başlık varsa kaldır.
-        item = item.replace(
-          /^.*?\b(?:listesi|listem|öneriler|önerileri)\s*:\s*/i,
-          ""
-        );
+        // İki nokta ile yazılmış açıklama başlıklarını atla.
+        if (/:\s*$/.test(item)) {
+          return "";
+        }
 
         return item.trim();
       })
       .filter(Boolean);
 
-    // Aynı satırda virgül veya noktalı virgülle yazılanları ayır.
-    items = items
-      .flatMap(item => item.split(/[,;]+/))
-      .map(item => item.trim().replace(/^["'“”]+|["'“”]+$/g, ""))
-      .filter(Boolean);
+    // Spor listesinde spor dallarını eşya olarak kabul etme.
+    const isSportsList =
+      /\b(spor|fitness|gym|egzersiz|antrenman)\b/i.test(listName);
 
-    // Yinelenen maddeleri kaldır.
-    items = [...new Set(items)];
+    if (isSportsList) {
+      const sportNames =
+        /^(futbol|basketbol|tenis|voleybol|yüzme|koşu|bisiklet|yoga|pilates|badminton|hentbol|golf|boks|jimnastik|atletizm|masa tenisi)$/i;
 
-    // Yeterli sayıda gerçek madde yoksa hata döndür.
-    // Böylece açıklama cümlesini madde olarak göndermeyiz.
+      items = items.filter(item => !sportNames.test(item));
+    }
+
+    // Tekrarlanan maddeleri kaldır.
+    items = items.filter(
+      (item, index, arr) =>
+        arr.findIndex(
+          other => other.toLocaleLowerCase("tr") ===
+                   item.toLocaleLowerCase("tr")
+        ) === index
+    );
+
+    // Dört gerçek eşya bulunamazsa HTML tarafındaki
+    // hazır önerilerin devreye girmesi için hata döndür.
     if (items.length < 4) {
       console.error(
-        "Yapay zeka dört geçerli madde döndürmedi. Bulunan:",
+        "Dört geçerli eşya bulunamadı. Bulunan madde sayısı:",
         items.length
       );
 
       return res.status(502).json({
-        error: "Yapay zekadan dört geçerli madde alınamadı."
+        error: "Dört uygun eşya önerisi alınamadı."
       });
     }
 
-    // Yalnızca ilk dört maddeyi gönder.
     return res.json({
       items: items.slice(0, 4)
     });
