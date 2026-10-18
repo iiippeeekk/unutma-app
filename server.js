@@ -48,17 +48,18 @@ app.post("/api/suggest", async (req, res) => {
               role: "system",
               content:
                 "Sen Türkçe liste hazırlama asistanısın. " +
-                "Verilen liste adına uygun tam 4 somut eşya veya görev öner. " +
-                "Her öneriyi ayrı bir satıra yaz. " +
-                "Başlık, giriş cümlesi, açıklama veya numara ekleme. " +
-                "Önerileri tek satırda birleştirme."
+                "Tam olarak 4 somut eşya veya görev öner. " +
+                "Her maddeyi ayrı satıra yaz. " +
+                "Başlık, giriş, açıklama veya sonuç cümlesi yazma. " +
+                "Numaralandırma kullanma. " +
+                "Yalnızca dört madde döndür."
             },
             {
               role: "user",
               content:
-                `Liste adı: "${listName}". ` +
-                "Bu listeye uygun 4 farklı ve gerekli madde öner. " +
-                "Yalnızca maddeleri, her biri ayrı satırda olacak şekilde döndür."
+                `Liste adı: "${listName}".\n` +
+                "Bu liste için gerekli 4 farklı madde öner. " +
+                "Yalnızca madde isimlerini, her biri ayrı satırda yaz."
             }
           ]
         })
@@ -84,24 +85,33 @@ app.post("/api/suggest", async (req, res) => {
     }
 
     // Kod bloğu işaretlerini kaldır.
-    let cleanedContent = content
+    const cleanedContent = content
       .replace(/```[a-z]*\s*/gi, "")
       .replace(/```/g, "")
       .trim();
 
-    // Yanıtı satırlara ayır ve her satırı temizle.
+    // Satırları ayır ve başlıkları temizle.
     let items = cleanedContent
       .split(/\r?\n/)
       .map(line => {
         let item = line.trim();
 
-        // Madde numaralarını ve işaretlerini kaldır.
+        // Madde işaretlerini ve numaralandırmayı kaldır.
         item = item.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "");
 
-        // "Kamp Listesi:" veya "Kamp için gerekli 4 şey:"
-        // gibi başlıkları kaldır.
+        // Açıklama veya başlık cümlelerini tamamen atla.
+        if (
+          /^(sadece\s+)?(kamp\s+yapmaya\s+uygun|liste|öneriler|önerilen\s+maddeler|bu\s+listeye|işte\s)/i.test(item) ||
+          /^(sadece\s+)?\d+\s+(farklı\s+ve\s+)?(gerekli\s+)?(madde|öneri|eşya|malzeme)/i.test(item) ||
+          /^(işte|tabii|elbette|örneğin|aşağıda)\b/i.test(item) ||
+          /:\s*$/.test(item)
+        ) {
+          return "";
+        }
+
+        // İki nokta öncesi başlık varsa kaldır.
         item = item.replace(
-          /^.*?\b(?:listesi|listem|öneriler|önerileri|gerekli\s+(?:\d+\s+)?(?:şey|şeyler|eşya|eşyalar|malzeme|malzemeler))\s*:\s*/i,
+          /^.*?\b(?:listesi|listem|öneriler|önerileri)\s*:\s*/i,
           ""
         );
 
@@ -109,25 +119,29 @@ app.post("/api/suggest", async (req, res) => {
       })
       .filter(Boolean);
 
-    // Birden fazla eşya aynı satırda ve virgülle yazılmışsa ayır.
+    // Aynı satırda virgül veya noktalı virgülle yazılanları ayır.
     items = items
       .flatMap(item => item.split(/[,;]+/))
       .map(item => item.trim().replace(/^["'“”]+|["'“”]+$/g, ""))
       .filter(Boolean);
 
-    // Yinelenen önerileri kaldır.
+    // Yinelenen maddeleri kaldır.
     items = [...new Set(items)];
 
-    // Tek başlık veya yetersiz yanıtı geçerli liste olarak kabul etme.
-    // HTML tarafındaki hazır öneriler bu durumda devreye girer.
-    if (items.length < 2) {
-      console.error("Yapay zeka yeterli sayıda madde döndürmedi.");
+    // Yeterli sayıda gerçek madde yoksa hata döndür.
+    // Böylece açıklama cümlesini madde olarak göndermeyiz.
+    if (items.length < 4) {
+      console.error(
+        "Yapay zeka dört geçerli madde döndürmedi. Bulunan:",
+        items.length
+      );
+
       return res.status(502).json({
-        error: "Yeterli sayıda öneri alınamadı."
+        error: "Yapay zekadan dört geçerli madde alınamadı."
       });
     }
 
-    // En fazla 4 madde gönder.
+    // Yalnızca ilk dört maddeyi gönder.
     return res.json({
       items: items.slice(0, 4)
     });
@@ -142,7 +156,6 @@ app.post("/api/suggest", async (req, res) => {
 });
 
 app.get("*", (req, res, next) => {
-  // API isteklerini normal hata yönetimine bırak.
   if (req.path.startsWith("/api/")) {
     return next();
   }
