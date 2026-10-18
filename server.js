@@ -66,13 +66,31 @@ app.post("/api/suggest", async (req, res) => {
       });
     }
 
-    const items = content
-      .split(/\r?\n/)
-      .map(line => line.replace(/^[\s\-*•\d.)#]+/, "").trim())
-      .filter(Boolean)
-      .slice(0, 4);
 
-    return res.json({ items });
+const cleanedContent = content
+  .replace(/^```(?:text|json)?\s*/i, "")
+  .replace(/```$/i, "")
+  .replace(/^.*?(?:işte öneriler|öneriler|gerekli şeyler)\s*:\s*/i, "")
+  .trim();
+
+let items = cleanedContent
+  .split(/\r?\n|[,;]+/)
+  .map(line =>
+    line
+      .replace(/^[\s\-*•\d.)#]+/, "")
+      .trim()
+  )
+  .filter(Boolean);
+
+// Tek satırda gelen "Kamp için gerekli 4 şey: su, çadır..."
+// gibi cevapları da ayrı maddelere ayır.
+items = items
+  .map(item => item.replace(/^.*?\b(?:şeyler|eşyalar|malzemeler)\s*:\s*/i, ""))
+  .filter(Boolean)
+  .slice(0, 4);
+
+return res.json({ items });
+
   } catch (error) {
     console.error("Suggestion endpoint error:", error.message);
     return res.status(500).json({
