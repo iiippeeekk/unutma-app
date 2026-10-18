@@ -47,15 +47,18 @@ app.post("/api/suggest", async (req, res) => {
             {
               role: "system",
               content:
-                "You generate practical suggestions for a to-do or packing list. Reply in Turkish with exactly 4 short, useful items. Put each item on a separate line. Do not add a heading, introduction, explanation, or numbering. Do not combine the items into one sentence."
+                "Sen Türkçe liste hazırlama asistanısın. " +
+                "Verilen liste adına uygun tam 4 somut eşya veya görev öner. " +
+                "Her öneriyi ayrı bir satıra yaz. " +
+                "Başlık, giriş cümlesi, açıklama veya numara ekleme. " +
+                "Önerileri tek satırda birleştirme."
             },
             {
               role: "user",
               content:
                 `Liste adı: "${listName}". ` +
-                "Bu liste için 4 kısa ve somut öneri ver. " +
-                "Her öneriyi ayrı bir satıra yaz. " +
-                "Başlık veya açıklama ekleme."
+                "Bu listeye uygun 4 farklı ve gerekli madde öner. " +
+                "Yalnızca maddeleri, her biri ayrı satırda olacak şekilde döndür."
             }
           ]
         })
@@ -65,8 +68,7 @@ app.post("/api/suggest", async (req, res) => {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      console.error("Kedy API returned HTTP", response.status);
-
+      console.error("Kedy API HTTP hatası:", response.status);
       return res.status(502).json({
         error: "Yapay zeka servisi şu anda yanıt veremedi."
       });
@@ -75,46 +77,61 @@ app.post("/api/suggest", async (req, res) => {
     const content = data?.choices?.[0]?.message?.content;
 
     if (typeof content !== "string" || !content.trim()) {
-      console.error(
-        "Kedy API response did not include choices[0].message.content"
-      );
-
+      console.error("Kedy API geçerli metin döndürmedi.");
       return res.status(502).json({
         error: "Yapay zeka yanıtı okunamadı."
       });
     }
 
-    // Yapay zekânın ekleyebileceği kod bloklarını temizle.
+    // Kod bloğu işaretlerini kaldır.
     let cleanedContent = content
-      .replace(/```(?:text|json)?/gi, "")
+      .replace(/```[a-z]*\s*/gi, "")
+      .replace(/```/g, "")
       .trim();
 
-    // "Kamp için gerekli 4 şey: su, çadır..." gibi
-    // başlangıç başlıklarını temizle.
-    cleanedContent = cleanedContent.replace(
-      /^.*?\b(?:işte\s+)?(?:öneriler|gerekli\s+(?:\d+\s+)?(?:şey|şeyler|eşya|eşyalar|malzeme|malzemeler))\s*:\s*/i,
-      ""
-    );
+    // Yanıtı satırlara ayır ve her satırı temizle.
+    let items = cleanedContent
+      .split(/\r?\n/)
+      .map(line => {
+        let item = line.trim();
 
-    // Satırları, virgülleri ve noktalı virgülleri ayırıcı kabul et.
-    const items = cleanedContent
-      .split(/\r?\n|[,;]+/)
-      .map((line) =>
-        line
-          .replace(/^[\s\-*•\d.)#]+/, "")
-          .replace(/[.!]+$/, "")
-          .trim()
-      )
-      .filter(Boolean)
-      .slice(0, 4);
+        // Madde numaralarını ve işaretlerini kaldır.
+        item = item.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "");
 
-    if (items.length === 0) {
+        // "Kamp Listesi:" veya "Kamp için gerekli 4 şey:"
+        // gibi başlıkları kaldır.
+        item = item.replace(
+          /^.*?\b(?:listesi|listem|öneriler|önerileri|gerekli\s+(?:\d+\s+)?(?:şey|şeyler|eşya|eşyalar|malzeme|malzemeler))\s*:\s*/i,
+          ""
+        );
+
+        return item.trim();
+      })
+      .filter(Boolean);
+
+    // Birden fazla eşya aynı satırda ve virgülle yazılmışsa ayır.
+    items = items
+      .flatMap(item => item.split(/[,;]+/))
+      .map(item => item.trim().replace(/^["'“”]+|["'“”]+$/g, ""))
+      .filter(Boolean);
+
+    // Yinelenen önerileri kaldır.
+    items = [...new Set(items)];
+
+    // Tek başlık veya yetersiz yanıtı geçerli liste olarak kabul etme.
+    // HTML tarafındaki hazır öneriler bu durumda devreye girer.
+    if (items.length < 2) {
+      console.error("Yapay zeka yeterli sayıda madde döndürmedi.");
       return res.status(502).json({
-        error: "Yapay zekâdan geçerli öneriler alınamadı."
+        error: "Yeterli sayıda öneri alınamadı."
       });
     }
 
-    return res.json({ items });
+    // En fazla 4 madde gönder.
+    return res.json({
+      items: items.slice(0, 4)
+    });
+
   } catch (error) {
     console.error("Suggestion endpoint error:", error.message);
 
@@ -125,7 +142,7 @@ app.post("/api/suggest", async (req, res) => {
 });
 
 app.get("*", (req, res, next) => {
-  // API isteklerinde hata yönetiminin devam etmesini sağla.
+  // API isteklerini normal hata yönetimine bırak.
   if (req.path.startsWith("/api/")) {
     return next();
   }
